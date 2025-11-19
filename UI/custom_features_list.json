@@ -1,0 +1,26 @@
+{
+  "features": [
+    "VoicedRatio",
+    "SilencePerMinute",
+    "PausesPerMinute",
+    "PauseMean",
+    "PauseMax",
+    "PauseVariance",
+    "MedianPause",
+    "LongPauseCount",
+    "TransitionVUV",
+    "PhonationRatio",
+    "DeltaF0Mean",
+    "DeltaF0Std",
+    "DeltaRMSMean",
+    "DeltaRMSStd",
+    "CentroidMean",
+    "MFCC5Mean",
+    "MFCC5Std",
+    "CentroidStd",
+    "FluxStd",
+    "EntropyStd"
+  ],
+  "description": "Custom audio features including pause analysis, voicing metrics, and prosody",
+  "total_features": 20
+}
