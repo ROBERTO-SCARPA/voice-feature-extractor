@@ -5,9 +5,7 @@ import os
 import sys
 import json
 import glob
-import urllib.request  
-import zipfile         
-import threading
+
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -197,8 +195,16 @@ class AudioFeatureExtractorGUI:
         # Configure root background
         self.root.configure(bg=self.colors['bg'])
         
-        # Config file path
-        self.config_file = os.path.join(os.path.dirname(__file__), 'gui_config.json')
+        # Config file path - Usa la cartella dell'utente per persistenza
+        if getattr(sys, 'frozen', False):
+            # Se è un exe compilato con PyInstaller
+            app_data_dir = os.path.join(os.path.expanduser('~'), '.voice_feature_extractor')
+            os.makedirs(app_data_dir, exist_ok=True)
+            self.config_file = os.path.join(app_data_dir, 'gui_config.json')
+        else:
+            # Se è eseguito da Python direttamente (sviluppo)
+            self.config_file = os.path.join(os.path.dirname(__file__), 'gui_config.json')
+
         
         # Variables
         self.selected_path = tk.StringVar()
@@ -436,6 +442,7 @@ class AudioFeatureExtractorGUI:
             text="📄 Single Audio File",
             variable=self.input_type,
             value="file",
+            command=self.on_input_type_change,
             bg=self.colors['white'],
             fg=self.colors['dark'],
             font=('Segoe UI', 10),
@@ -449,6 +456,7 @@ class AudioFeatureExtractorGUI:
             radio_frame,
             text="📂 Folder",
             variable=self.input_type,
+            command=self.on_input_type_change,
             value="folder",
             bg=self.colors['white'],
             fg=self.colors['dark'],
@@ -690,22 +698,32 @@ class AudioFeatureExtractorGUI:
             'info': 'ℹ',
             'progress': '⟳'
         }
-        colors = {
-            'success': self.colors['success'],
-            'error': self.colors['danger'],
-            'warning': self.colors['warning'],
-            'info': self.colors['primary'],
-            'progress': '#7f8c8d'
+        
+        # Colori di sfondo per la barra
+        bg_colors = {
+            'success': '#27ae60',      # Verde
+            'error': '#e74c3c',        # Rosso
+            'warning': '#f39c12',      # Arancione/Giallo
+            'info': '#3498db',         # Blu
+            'progress': '#95a5a6'      # Grigio
         }
         
         icon = icons.get(status_type, 'ℹ')
-        color = colors.get(status_type, self.colors['dark'])
+        bg_color = bg_colors.get(status_type, self.colors['light'])
         
+        # Aggiorna label E frame della status bar
         self.status_label.config(
             text=f"{icon} {message}",
-            fg=color
+            fg='white',                # Testo sempre bianco
+            bg=bg_color,               # Sfondo colorato
+            font=('Segoe UI', 10, 'bold')  # Font più grande e bold
         )
+        
+        # Aggiorna anche il frame parent per coerenza
+        self.status_label.master.config(bg=bg_color)
+        
         self.root.update()
+
 
 
     def create_tooltip(self, widget, text):
@@ -753,6 +771,13 @@ class AudioFeatureExtractorGUI:
             # Save only to JSON
             self.save_config({'root_folder_path': path})
             self.set_status(f"Selected: {os.path.basename(path)}", "success")
+
+    def on_input_type_change(self):
+        """Clear path when input type changes"""
+        if self.selected_path.get():
+            self.selected_path.set("")
+            self.set_status("Input type changed - Please select a new path", "info")
+
 
     # MODIFICATO: Metodo per aprire la finestra di selezione feature con radio buttons per eGeMAPS
     def open_feature_selector(self, feature_type):
@@ -1157,49 +1182,44 @@ class AudioFeatureExtractorGUI:
 
 
             # Custom extraction
+            # Custom extraction
             if self.extract_custom.get():
-                try:
-                    try:
-                        from feature_extractors.extract_feature_batch_LLD import generate_lld_for_file, generate_lld_in_tree
-                    except Exception:
-                        from ..feature_extractors.extract_feature_batch_LLD import generate_lld_for_file, generate_lld_in_tree
-                    
-                    if os.path.isfile(path) and path.lower().endswith('.wav'):
-                        self.set_status("Generating LLD for file...", "progress")
-                        generate_lld_for_file(path)
-                    else:
-                        self.set_status("Generating LLD files in folder...", "progress")
-                        generate_lld_in_tree(path)
-                        
-                    self.set_status("LLD generation completed", "success")
-                except Exception as e:
-                    self.set_status(f"Error generating LLD files: {str(e)}", "error")
-                    return
-
-
                 out_custom = filedialog.asksaveasfilename(
                     defaultextension=".csv",
                     filetypes=[("CSV files", "*.csv")],
                     initialfile="extracted_features_custom.csv"
                 )
                 if not out_custom:
-                    self.set_status("Operation cancelled by user", "warning")
+                    self.extract_button.config(state='normal', bg=self.colors['success'])
+                    self.progress.stop()
                     return
                 
                 # Rimuovi file esistente se presente
                 if os.path.exists(out_custom):
                     try:
                         os.remove(out_custom)
-                        self.set_status(f"Removed existing file: {os.path.basename(out_custom)}", "info")
-                    except Exception as e:
-                        self.set_status(f"Warning: Could not remove existing file: {e}", "warning")
-                    
-                self.set_status("Extracting custom features...", "progress")
-                extract_custom_features(path, output_path=out_custom, selected_features=self.selected_custom_features)
+                    except:
+                        pass
+                
+                self.set_status("Extracting custom features (LLD will be generated if needed)...", "progress")
+                
+                # extract_custom_features si occupa di tutto: cerca LLD, li genera se necessario, ed estrae le feature
+                extract_custom_features(
+                    path, 
+                    voicing_thr=0.55,
+                    min_pause=0.20,
+                    long_pause_thr=1.5,
+                    smooth_win_ms=50,
+                    hysteresis=True,
+                    output_path=out_custom, 
+                    selected_features=self.selected_custom_features
+                )
+                
                 self.set_status("Custom extraction completed successfully", "success")
 
-
+            # Messaggio finale di successo
             self.set_status("All feature extraction completed successfully!", "success")
+
             
         except Exception as e:
             self.set_status(f"Error during extraction: {str(e)}", "error")

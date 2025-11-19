@@ -142,7 +142,7 @@ def extract_and_save_features(input_audio_file, selected_features=None):
         
         # MODIFICATO: Gestisci "all" per estrarre tutte le feature
         if isinstance(selected_features, str) and selected_features.lower() == "all":
-            # Estrai TUTTE le colonne tranne 'name' e 'frameTime'
+            # Estrai TUTTE le colonne tranne 'name' , 'frameTime' , 'class'
             exclude_cols = ['name', 'frameTime', 'class']
             all_feature_cols = [col for col in df.columns if col not in exclude_cols]
             selected_features = all_feature_cols
