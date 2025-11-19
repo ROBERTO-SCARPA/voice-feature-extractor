@@ -14,10 +14,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Try absolute import (runtime), fallback to relative import for editors/type-checkers
 try:
-    from feature_extractors.csv_extract_eGeMAPS_FUNCTION import extract_egemaps_features
+    from feature_extractors.csv_extract_eGeMAPS_FUNCTION import extract_egemaps_features, egemaps_features_v2
     from feature_extractors.extract_features_custom import extract_custom_features
 except Exception:
-    from ..feature_extractors.csv_extract_eGeMAPS_FUNCTION import extract_egemaps_features
+    from ..feature_extractors.csv_extract_eGeMAPS_FUNCTION import extract_egemaps_features, egemaps_features_v2
     from ..feature_extractors.extract_features_custom import extract_custom_features
 
 
@@ -330,9 +330,10 @@ class AudioFeatureExtractorGUI:
         
         # Già configurato
         self.set_status("Ready - Select audio files and feature sets to begin", "success")
-
-
-
+    
+    def download_opensmile(self):
+        """Wrapper to call the module-level function"""
+        download_opensmile(self)
 
     def configure_styles(self):
         """Configure modern ttk styles"""
@@ -490,7 +491,6 @@ class AudioFeatureExtractorGUI:
         )
         browse_btn.grid(row=0, column=1)
 
-
         # Feature Selection Card - MODIFICATO
         feature_card = self.create_card(main_container, "🎛️ Feature Selection")
         feature_card.grid(row=1, column=0, sticky="ew", pady=(0, 15))
@@ -527,7 +527,7 @@ class AudioFeatureExtractorGUI:
         # AGGIUNTO: Configure button per eGeMAPS
         config_btn_egemaps = tk.Button(
             cb1_frame,
-            text="⚙ Configure list",
+            text="⚙ Configure",
             command=lambda: self.open_feature_selector('egemaps'),
             bg=self.colors['primary'],
             fg=self.colors['white'],
@@ -570,7 +570,7 @@ class AudioFeatureExtractorGUI:
         # AGGIUNTO: Configure button per custom
         config_btn_custom = tk.Button(
             cb2_frame,
-            text="⚙ Configure list",
+            text="⚙ Configure",
             command=lambda: self.open_feature_selector('custom'),
             bg=self.colors['primary'],
             fg=self.colors['white'],
@@ -583,7 +583,6 @@ class AudioFeatureExtractorGUI:
             activeforeground=self.colors['white']
         )
         config_btn_custom.pack(side='right', padx=(0, 5))
-
 
         # Action area
         action_frame = tk.Frame(main_container, bg=self.colors['bg'])
@@ -738,7 +737,6 @@ class AudioFeatureExtractorGUI:
         widget.bind("<Enter>", on_enter)
         widget.bind("<Leave>", on_leave)
 
-
     def browse_path(self):
         """Open file or folder dialog based on input type"""
         if self.input_type.get() == "folder":
@@ -756,32 +754,32 @@ class AudioFeatureExtractorGUI:
             self.save_config({'root_folder_path': path})
             self.set_status(f"Selected: {os.path.basename(path)}", "success")
 
-    # AGGIUNTO: Metodo per aprire la finestra di selezione feature
+    # MODIFICATO: Metodo per aprire la finestra di selezione feature con radio buttons per eGeMAPS
     def open_feature_selector(self, feature_type):
         """Open a popup window to select specific features"""
         if feature_type == 'egemaps':
-            title = "Select eGeMAPS Features"
-            features_list = self.egemaps_features_list
-            selected_features = self.selected_egemaps_features
+            title = "Configure eGeMAPS Features"
+            available_features = self.egemaps_features_list
+            current_selection = self.selected_egemaps_features if isinstance(self.selected_egemaps_features, list) else []
         else:  # custom
             title = "Select Custom Features"
-            features_list = self.custom_features_list
-            selected_features = self.selected_custom_features
+            available_features = self.custom_features_list
+            current_selection = self.selected_custom_features
         
-        if not features_list:
+        if not available_features and feature_type != 'egemaps':
             messagebox.showwarning("No Features", f"No {feature_type} features found in JSON file")
             return
         
         # Create popup window
-        popup = tk.Toplevel(self.root)
-        popup.title(title)
-        popup.geometry("600x500")
-        popup.configure(bg=self.colors['bg'])
-        popup.transient(self.root)
-        popup.grab_set()
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("650x650")
+        dialog.configure(bg=self.colors['bg'])
+        dialog.transient(self.root)
+        dialog.grab_set()
         
         # Header
-        header_frame = tk.Frame(popup, bg=self.colors['primary'], height=60)
+        header_frame = tk.Frame(dialog, bg=self.colors['primary'], height=60)
         header_frame.pack(fill='x')
         header_frame.pack_propagate(False)
         
@@ -794,28 +792,94 @@ class AudioFeatureExtractorGUI:
         )
         header_label.pack(pady=15)
         
-        # Info label
-        info_frame = tk.Frame(popup, bg=self.colors['bg'])
-        info_frame.pack(fill='x', padx=20, pady=(15, 10))
+        # AGGIUNTO: Radio buttons per eGeMAPS
+        if feature_type == 'egemaps':
+            # Frame per i radio button
+            radio_frame = tk.Frame(dialog, bg=self.colors['white'])
+            radio_frame.pack(fill='x', padx=20, pady=(20, 10))
+            
+            # Variabile locale per il dialog
+            egemaps_selection_mode = tk.StringVar(value="custom")  # "custom", "all", "v2_all"
+            
+            tk.Label(
+                radio_frame,
+                text="Selection Mode:",
+                bg=self.colors['white'],
+                fg=self.colors['dark'],
+                font=('Segoe UI', 10, 'bold')
+            ).pack(anchor='w', pady=(0, 8))
+            
+            rb_custom = tk.Radiobutton(
+                radio_frame,
+                text="🎯 Custom selection (choose below)",
+                variable=egemaps_selection_mode,
+                value="custom",
+                bg=self.colors['white'],
+                fg=self.colors['dark'],
+                font=('Segoe UI', 9),
+                selectcolor=self.colors['light'],
+                activebackground=self.colors['white'],
+                cursor='hand2'
+            )
+            rb_custom.pack(anchor='w', pady=2)
+            
+            rb_v2_all = tk.Radiobutton(
+                radio_frame,
+                text="📊 All v2 standard (48 features)",
+                variable=egemaps_selection_mode,
+                value="v2_all",
+                bg=self.colors['white'],
+                fg=self.colors['dark'],
+                font=('Segoe UI', 9),
+                selectcolor=self.colors['light'],
+                activebackground=self.colors['white'],
+                cursor='hand2'
+            )
+            rb_v2_all.pack(anchor='w', pady=2)
+            
+            rb_all = tk.Radiobutton(
+                radio_frame,
+                text="🔥 All features (88 features)",
+                variable=egemaps_selection_mode,
+                value="all",
+                bg=self.colors['white'],
+                fg=self.colors['dark'],
+                font=('Segoe UI', 9),
+                selectcolor=self.colors['light'],
+                activebackground=self.colors['white'],
+                cursor='hand2'
+            )
+            rb_all.pack(anchor='w', pady=2)
+            
+            # Separatore
+            ttk.Separator(dialog, orient='horizontal').pack(fill='x', padx=20, pady=10)
         
+        # Info label
+        info_frame = tk.Frame(dialog, bg=self.colors['bg'])
+        info_frame.pack(fill='x', padx=20, pady=(10 if feature_type == 'egemaps' else 15, 10))
+        
+        info_text = "Select individual features below:" if feature_type == 'egemaps' else f"Select the features you want to extract ({len(available_features)} available)"
         info_label = tk.Label(
             info_frame,
-            text=f"Select the features you want to extract ({len(features_list)} available)",
+            text=info_text,
             bg=self.colors['bg'],
             fg=self.colors['dark'],
             font=('Segoe UI', 9)
         )
         info_label.pack(anchor='w')
         
-        # Select/Deselect all frame
-        select_frame = tk.Frame(popup, bg=self.colors['bg'])
+        # Select/Deselect all frame (solo per custom o mode custom per egemaps)
+        select_frame = tk.Frame(dialog, bg=self.colors['bg'])
         select_frame.pack(fill='x', padx=20, pady=(0, 10))
         
         select_all_var = tk.BooleanVar(value=True)
         
+        feature_vars = {}
+        checkboxes = []  # Lista per tenere traccia delle checkbox (solo eGeMAPS)
+        
         def toggle_all():
             state = select_all_var.get()
-            for var in feature_vars:
+            for var in feature_vars.values():
                 var.set(state)
         
         select_all_cb = tk.Checkbutton(
@@ -833,7 +897,7 @@ class AudioFeatureExtractorGUI:
         select_all_cb.pack(anchor='w')
         
         # Scrollable frame for checkboxes
-        canvas_frame = tk.Frame(popup, bg=self.colors['white'])
+        canvas_frame = tk.Frame(dialog, bg=self.colors['white'])
         canvas_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
 
         canvas = tk.Canvas(canvas_frame, bg=self.colors['white'], highlightthickness=0)
@@ -848,7 +912,7 @@ class AudioFeatureExtractorGUI:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # AGGIUNTO: Abilita lo scroll con la rotellina del mouse
+        # Abilita lo scroll con la rotellina del mouse
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
@@ -858,15 +922,13 @@ class AudioFeatureExtractorGUI:
         def _unbind_mousewheel(event):
             canvas.unbind_all("<MouseWheel>")
 
-        # Bind quando il mouse entra nel canvas
         canvas.bind('<Enter>', _bind_mousewheel)
         canvas.bind('<Leave>', _unbind_mousewheel)
 
         # Create checkboxes for each feature
-        feature_vars = []
-        for i, feature in enumerate(features_list):
-            var = tk.BooleanVar(value=(feature in selected_features))
-            feature_vars.append(var)
+        for i, feature in enumerate(available_features):
+            var = tk.BooleanVar(value=(feature in current_selection))
+            feature_vars[feature] = var
             
             cb = tk.Checkbutton(
                 scrollable_frame,
@@ -882,6 +944,9 @@ class AudioFeatureExtractorGUI:
             )
             cb.pack(fill='x', padx=15, pady=3)
             
+            if feature_type == 'egemaps':
+                checkboxes.append(cb)  # Salva riferimento
+            
             # Alternate background for better readability
             if i % 2 == 0:
                 cb.configure(bg='#f8f9fa')
@@ -889,30 +954,62 @@ class AudioFeatureExtractorGUI:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        # AGGIUNTO: Funzione per abilitare/disabilitare checkbox
+        def update_checkboxes_state():
+            if feature_type == 'egemaps':
+                mode = egemaps_selection_mode.get()
+                state = 'normal' if mode == 'custom' else 'disabled'
+                for cb in checkboxes:
+                    cb.config(state=state)
+                select_all_cb.config(state=state)
+        
+        # Bind radio buttons per aggiornare stato checkbox
+        if feature_type == 'egemaps':
+            rb_custom.config(command=update_checkboxes_state)
+            rb_v2_all.config(command=update_checkboxes_state)
+            rb_all.config(command=update_checkboxes_state)
         
         # Buttons frame
-        button_frame = tk.Frame(popup, bg=self.colors['bg'])
+        button_frame = tk.Frame(dialog, bg=self.colors['bg'])
         button_frame.pack(fill='x', padx=20, pady=(0, 15))
         
         def save_selection():
-            # Get selected features
-            selected = [features_list[i] for i, var in enumerate(feature_vars) if var.get()]
-            
-            if not selected:
-                messagebox.showwarning("No Selection", "Please select at least one feature")
-                return
-            
-            # Update the selected features
             if feature_type == 'egemaps':
-                self.selected_egemaps_features = selected
-            else:
-                self.selected_custom_features = selected
+                mode = egemaps_selection_mode.get()
+                
+                if mode == "all":
+                    # Tutte le 88 feature
+                    self.selected_egemaps_features = "all"
+                    count_msg = "ALL (88)"
+                elif mode == "v2_all":
+                    # Tutte le 48 v2
+                    self.selected_egemaps_features = egemaps_features_v2.copy()
+                    count_msg = f"{len(egemaps_features_v2)}"
+                else:
+                    # Custom selection
+                    self.selected_egemaps_features = [
+                        f for f, var in feature_vars.items() if var.get()
+                    ]
+                    if not self.selected_egemaps_features:
+                        messagebox.showwarning("No Selection", "Please select at least one feature")
+                        return
+                    count_msg = f"{len(self.selected_egemaps_features)}"
+                
+                self.set_status(f"Selected {count_msg} eGeMAPS features", "success")
+                
+            else:  # custom
+                self.selected_custom_features = [
+                    f for f, var in feature_vars.items() if var.get()
+                ]
+                if not self.selected_custom_features:
+                    messagebox.showwarning("No Selection", "Please select at least one feature")
+                    return
+                self.set_status(f"Selected {len(self.selected_custom_features)} custom features", "success")
             
-            self.set_status(f"Selected {len(selected)} {feature_type} features", "success")
-            popup.destroy()
+            dialog.destroy()
         
         def cancel_selection():
-            popup.destroy()
+            dialog.destroy()
         
         # Cancel button
         cancel_btn = tk.Button(
@@ -934,7 +1031,7 @@ class AudioFeatureExtractorGUI:
         # Save button
         save_btn = tk.Button(
             button_frame,
-            text=f"Save Selection)",
+            text="Save Selection",
             command=save_selection,
             bg=self.colors['success'],
             fg=self.colors['white'],
@@ -948,11 +1045,11 @@ class AudioFeatureExtractorGUI:
         )
         save_btn.pack(side='right')
         
-        # Center the popup
-        popup.update_idletasks()
-        x = (popup.winfo_screenwidth() // 2) - (popup.winfo_width() // 2)
-        y = (popup.winfo_screenheight() // 2) - (popup.winfo_height() // 2)
-        popup.geometry(f"+{x}+{y}")
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
 
     def cleanup_lld_files(self, path):
         """Delete all LLD files created during feature extraction"""
@@ -996,7 +1093,6 @@ class AudioFeatureExtractorGUI:
                 
         except Exception as e:
             print(f"Warning: Error during LLD cleanup: {e}")
-
 
     def extract_features(self):
         """Main extraction function with improved error handling"""
@@ -1047,8 +1143,16 @@ class AudioFeatureExtractorGUI:
                         self.set_status(f"Warning: Could not remove existing file: {e}", "warning")
                     
                 self.set_status("Extracting eGeMAPS features...", "progress")
-                # MODIFICATO: Passa le feature selezionate
-                extract_egemaps_features(path, out_egemaps, selected_features=self.selected_egemaps_features)
+                
+                # MODIFICATO: Determina cosa passare allo script
+                if self.selected_egemaps_features == "all":
+                    features_to_extract = "all"
+                elif isinstance(self.selected_egemaps_features, list):
+                    features_to_extract = self.selected_egemaps_features
+                else:
+                    features_to_extract = None
+                
+                extract_egemaps_features(path, out_egemaps, selected_features=features_to_extract)
                 self.set_status("eGeMAPS extraction completed successfully", "success")
 
 
@@ -1091,7 +1195,6 @@ class AudioFeatureExtractorGUI:
                         self.set_status(f"Warning: Could not remove existing file: {e}", "warning")
                     
                 self.set_status("Extracting custom features...", "progress")
-                # MODIFICATO: Passa le feature selezionate
                 extract_custom_features(path, output_path=out_custom, selected_features=self.selected_custom_features)
                 self.set_status("Custom extraction completed successfully", "success")
 
@@ -1154,7 +1257,7 @@ class AudioFeatureExtractorGUI:
         egemaps_path = os.path.normpath(egemaps_path)
 
 
-        # Save only to config file (no cp_paths)
+        # Save only to config file
         self.save_config({
             'SMILE_path': smile_path,
             'Compare2016_config_path': compare_path,
