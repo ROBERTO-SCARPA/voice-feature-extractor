@@ -1,0 +1,30 @@
+# File temporanei / cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.swp
+
+# Cartelle di ambiente virtuale
+.venv/
+venv/
+env/
+conda-env/
+
+# File di log o temporanei
+*.log
+*.tmp
+
+# File di modello o dataset pesanti
+model/*.pkl
+model/*.csv
+*.xlsx
+*.csv
+common/*
+
+# File di configurazione locali
+*.env
+.DS_Store
+
+# Cartelle di VS Code 
+.vscode/
