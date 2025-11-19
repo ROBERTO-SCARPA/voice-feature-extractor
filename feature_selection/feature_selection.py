@@ -955,15 +955,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--correlation-threshold",
         type=float,
-        default=0.9,
-        help="Soglia correlazione (default: 0.9)"
+        default=0.95,
+        help="Soglia correlazione (default: 0.95)"
     )
 
     parser.add_argument(
         "--variance-threshold",
         type=float,
-        default=0.01,
-        help="Soglia varianza (default: 0.01)"
+        default=0.005,
+        help="Soglia varianza (default: 0.05)"
     )
 
     parser.add_argument(
