@@ -4,6 +4,7 @@ from tkinter import ttk, filedialog, messagebox
 import os
 import sys
 import json
+import platform
 import glob
 
 
@@ -34,148 +35,296 @@ def download_opensmile(self):
     import urllib.request
     import zipfile
     import threading
+    import platform
     
     def download_thread():
         try:
-            self.set_status("Downloading openSMILE (~50MB)... Please wait", "progress")
+            # Rileva sistema operativo e architettura
+            system = platform.system().lower()
+            machine = platform.machine().lower()
+            
+            print(f"[DEBUG] Sistema rilevato: {system} ({machine})")
+            
+            # Determina il nome del file
+            if system == 'windows':
+                if 'arm' in machine or 'aarch64' in machine:
+                    self.set_status("ARM Windows not supported by openSMILE", "error")
+                    messagebox.showerror("Not Supported", "openSMILE does not provide ARM builds for Windows.")
+                    return
+                filename = "opensmile-3.0.2-windows-x86_64.zip"
+                
+            elif system == 'linux':
+                if 'aarch64' in machine or 'arm64' in machine:
+                    filename = "opensmile-3.0.2-linux-armv8.zip"
+                elif 'armv7' in machine or 'armhf' in machine:
+                    filename = "opensmile-3.0.2-linux-armv7.zip"
+                else:
+                    filename = "opensmile-3.0.2-linux-x86_64.zip"
+                    
+            elif system == 'darwin':
+                if 'arm' in machine or 'arm64' in machine:
+                    filename = "opensmile-3.0.2-macos-armv8.zip"
+                else:
+                    filename = "opensmile-3.0.2-macos-x86_64.zip"
+            else:
+                self.set_status(f"Unsupported OS: {system}", "error")
+                messagebox.showerror("Not Supported", f"Your OS ({system}) is not supported.")
+                return
+            
+            print(f"[DEBUG] File da scaricare: {filename}")
+            
+            # Percorsi
+            download_folder = os.path.join(os.path.expanduser('~'), 'opensmile_download')
+            final_folder = os.path.join(os.path.expanduser('~'), 'opensmile')
+            
+            print(f"[DEBUG] Cartella download: {download_folder}")
+            print(f"[DEBUG] Cartella finale: {final_folder}")
+            
+            os.makedirs(download_folder, exist_ok=True)
+            
+            # URL
+            url = f"https://github.com/audeering/opensmile/releases/download/v3.0.2/{filename}"
+            zip_path = os.path.join(download_folder, filename)
+            
+            print(f"[DEBUG] URL: {url}")
+            print(f"[DEBUG] Percorso ZIP: {zip_path}")
+            
+            self.set_status(f"Downloading from GitHub... 0%", "progress")
             self.progress.start(10)
             self.extract_button.config(state='disabled')
             
-            # Percorso di download - cartella temporanea dell'utente
-            download_folder = os.path.join(os.path.expanduser('~'), 'opensmile')
-            os.makedirs(download_folder, exist_ok=True)
-            
-            # URL openSMILE 3.0.2 per Windows
-            url = "https://github.com/audeering/opensmile/releases/download/v3.0.2/opensmile-3.0.2-win-x64.zip"
-            zip_path = os.path.join(download_folder, 'opensmile.zip')
-            
-            # Download con progress callback
+            # Download con progress
             def show_progress(block_num, block_size, total_size):
                 downloaded = block_num * block_size
                 if total_size > 0:
                     percent = min(100, (downloaded * 100) // total_size)
-                    self.set_status(f"Downloading openSMILE... {percent}%", "progress")
+                    mb_downloaded = downloaded / (1024 * 1024)
+                    mb_total = total_size / (1024 * 1024)
+                    self.set_status(f"Downloading... {percent}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)", "progress")
+                    print(f"[DEBUG] Download progress: {percent}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)")
             
+            print(f"[DEBUG] Inizio download da: {url}")
             urllib.request.urlretrieve(url, zip_path, show_progress)
             
-            self.set_status("Extracting openSMILE... Almost done", "progress")
+            # Verifica che il file sia stato scaricato
+            if not os.path.exists(zip_path):
+                raise RuntimeError(f"Il file ZIP non è stato creato: {zip_path}")
+            
+            zip_size = os.path.getsize(zip_path) / (1024 * 1024)
+            print(f"[DEBUG] Download completato! Dimensione ZIP: {zip_size:.2f} MB")
+            print(f"[DEBUG] File salvato in: {zip_path}")
+            
+            self.set_status(f"Extracting {zip_size:.1f} MB...", "progress")
             self.root.update()
             
-            # Estrai nella stessa cartella
+            # Estrai
+            print(f"[DEBUG] Inizio estrazione in: {download_folder}")
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(download_folder)
+            print(f"[DEBUG] Estrazione completata")
             
-            # Rimuovi il file zip
-            os.remove(zip_path)
+            # Lista cosa c'è nella cartella
+            contents = os.listdir(download_folder)
+            print(f"[DEBUG] Contenuto cartella download: {contents}")
             
-            # Cerca la cartella estratta (potrebbe essere opensmile-3.0.2-win-x64)
-            extracted_folders = [f for f in os.listdir(download_folder) 
+            # Trova la cartella estratta
+            extracted_folders = [f for f in contents 
                                if os.path.isdir(os.path.join(download_folder, f)) and 'opensmile' in f.lower()]
             
-            if extracted_folders:
-                # Rinomina la cartella estratta in 'opensmile' se necessario
-                extracted_path = os.path.join(download_folder, extracted_folders[0])
-                final_path = os.path.join(os.path.expanduser('~'), 'opensmile')
-                
-                if extracted_path != final_path:
-                    # Se esiste già la cartella finale, rimuovila
-                    import shutil
-                    if os.path.exists(final_path) and final_path != extracted_path:
-                        try:
-                            shutil.rmtree(final_path)
-                        except:
-                            pass
-                    
-                    # Sposta/rinomina
-                    try:
-                        shutil.move(extracted_path, final_path)
-                    except:
-                        final_path = extracted_path
+            print(f"[DEBUG] Cartelle openSMILE trovate: {extracted_folders}")
             
-            # Prova a rilevare i path
+            if not extracted_folders:
+                raise RuntimeError(f"Nessuna cartella openSMILE trovata dopo estrazione in {download_folder}")
+            
+            extracted_path = os.path.join(download_folder, extracted_folders[0])
+            print(f"[DEBUG] Cartella estratta: {extracted_path}")
+            
+            # Sposta nella posizione finale
+            import shutil
+            
+            # Rimuovi cartella finale se esiste
+            if os.path.exists(final_folder):
+                print(f"[DEBUG] Rimuovo cartella esistente: {final_folder}")
+                shutil.rmtree(final_folder)
+            
+            print(f"[DEBUG] Sposto da {extracted_path} a {final_folder}")
+            shutil.move(extracted_path, final_folder)
+            print(f"[DEBUG] Spostamento completato")
+            
+            # Rimuovi zip
+            print(f"[DEBUG] Rimuovo file ZIP: {zip_path}")
+            os.remove(zip_path)
+            
+            # Rimuovi cartella download se vuota
+            try:
+                remaining = os.listdir(download_folder)
+                if not remaining:
+                    os.rmdir(download_folder)
+                    print(f"[DEBUG] Cartella download rimossa (vuota)")
+            except:
+                pass
+            
+            # Verifica che openSMILE sia nella posizione finale
+            if not os.path.exists(final_folder):
+                raise RuntimeError(f"openSMILE non trovato in {final_folder} dopo installazione")
+            
+            print(f"[DEBUG] openSMILE installato correttamente in: {final_folder}")
+            
+            # Rileva i path
+            self.set_status("Configuring openSMILE paths...", "progress")
             detected = auto_detect_opensmile()
             
             if detected:
+                print(f"[DEBUG] Path rilevati: {detected}")
                 self.save_config(detected)
-                self.set_status("✓ openSMILE installed successfully!", "success")
-                messagebox.showinfo(
-                    "Installation Complete",
-                    f"openSMILE has been installed to:\n{download_folder}\n\n"
-                    "You can now start extracting features!"
-                )
+                self.set_status(f" openSMILE installed successfully!", "success")
+                
+                # Mostra path reali
+                msg = (f"openSMILE installed successfully!\n\n"
+                       f"Location: {final_folder}\n\n"
+                       f"SMILExtract: {detected.get('SMILE_path', 'N/A')}\n"
+                       f"Compare config: {detected.get('Compare2016_config_path', 'N/A')}\n"
+                       f"eGeMAPS config: {detected.get('eGeMAPS_config_path', 'N/A')}\n\n"
+                       "You can now start extracting features!")
+                messagebox.showinfo("Installation Complete", msg)
             else:
-                self.set_status("Installation completed but configuration failed", "error")
-                messagebox.showerror(
-                    "Configuration Error",
-                    f"openSMILE was downloaded to:\n{download_folder}\n\n"
+                print(f"[DEBUG] Auto-detect fallito")
+                self.set_status("Installation OK but auto-config failed", "warning")
+                messagebox.showwarning(
+                    "Manual Configuration Required",
+                    f"openSMILE was installed to:\n{final_folder}\n\n"
                     "But automatic configuration failed.\n"
                     "Please configure paths manually in Settings."
                 )
             
-        except Exception as e:
-            self.set_status(f"Download failed: {str(e)}", "error")
+        except urllib.error.HTTPError as e:
+            error_msg = f"HTTP Error {e.code}: {e.reason}"
+            print(f"[ERROR] {error_msg}")
+            print(f"[ERROR] URL: {url}")
+            self.set_status(f"Download failed: HTTP {e.code}", "error")
             messagebox.showerror(
                 "Download Failed",
-                f"Failed to download openSMILE:\n{str(e)}\n\n"
+                f"Failed to download openSMILE:\n{error_msg}\n\n"
+                f"URL: {url}\n\n"
                 "Please:\n"
                 "1. Check your internet connection\n"
                 "2. Download manually from:\n"
-                "   github.com/audeering/opensmile/releases\n"
-                "3. Configure paths in Settings"
+                "   github.com/audeering/opensmile/releases"
+            )
+        except Exception as e:
+            print(f"[ERROR] Errore durante installazione: {e}")
+            import traceback
+            traceback.print_exc()
+            self.set_status(f"Installation failed: {str(e)}", "error")
+            messagebox.showerror(
+                "Installation Failed",
+                f"Error during installation:\n{str(e)}\n\n"
+                "Check the console for detailed logs.\n\n"
+                "You can download manually from:\n"
+                "github.com/audeering/opensmile/releases"
             )
         finally:
             self.progress.stop()
             self.extract_button.config(state='normal')
             self.root.update()
     
-    # Esegui in thread separato per non bloccare la GUI
+    # Esegui in thread
     thread = threading.Thread(target=download_thread, daemon=True)
     thread.start()
 
 
-
 def auto_detect_opensmile():
     """Cerca openSMILE in posizioni comuni di installazione"""
+    user_home = os.path.expanduser('~')
+    
+    print(f"\n[DEBUG] ========== SEARCHING FOR openSMILE ==========")
+    print(f"[DEBUG] User home: {user_home}")
+    
     possible_locations = [
-        # Cartelle comuni Windows
         r'C:\opensmile',
         r'C:\Program Files\opensmile',
         r'C:\Program Files (x86)\opensmile',
-        
-        # User folder
-        os.path.join(os.path.expanduser('~'), 'opensmile'),
-        
-        # Desktop
-        os.path.join(os.path.expanduser('~'), 'Desktop', 'opensmile'),
-        
-        # Documents
-        os.path.join(os.path.expanduser('~'), 'Documents', 'opensmile'),
-        
-        # Stesso livello del progetto
+        os.path.join(user_home, 'opensmile'),
+        os.path.join(user_home, 'Desktop', 'opensmile'),
+        os.path.join(user_home, 'Documents', 'opensmile'),
+        os.path.join(user_home, 'Downloads', 'opensmile'),
         os.path.join(os.path.dirname(__file__), '..', '..', 'opensmile'),
-        
-        # Livello superiore
         os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'opensmile')),
     ]
     
-    for base_path in possible_locations:
+    print(f"[DEBUG] Checking {len(possible_locations)} locations:\n")
+    
+    for i, base_path in enumerate(possible_locations, 1):
+        print(f"[DEBUG] {i}. Checking: {base_path}")
+        
         if not os.path.exists(base_path):
+            print(f"    Folder does not exist")
             continue
         
-        # Percorsi standard openSMILE
-        smile_exe = os.path.join(base_path, 'build', 'progsrc', 'smilextract', 'Release', 'SMILExtract.exe')
+        print(f"    ✓ Folder exists!")
+        
+        # NUOVO: Prova MULTIPLI percorsi per l'exe (binari precompilati vs compilati da sorgente)
+        possible_exe_paths = [
+            # Binari precompilati (GitHub releases)
+            os.path.join(base_path, 'bin', 'SMILExtract.exe'),
+            os.path.join(base_path, 'bin', 'Win64', 'SMILExtract.exe'),
+            os.path.join(base_path, 'bin', 'x64', 'SMILExtract.exe'),
+            # Compilati da sorgente
+            os.path.join(base_path, 'build', 'progsrc', 'smilextract', 'Release', 'SMILExtract.exe'),
+            os.path.join(base_path, 'build', 'progsrc', 'smilextract', 'SMILExtract.exe'),
+        ]
+        
+        # Files comuni
         compare_conf = os.path.join(base_path, 'config', 'compare16', 'ComParE_2016.conf')
         egemaps_conf = os.path.join(base_path, 'config', 'egemaps', 'v02', 'eGeMAPSv02.conf')
+        cmakelists = os.path.join(base_path, 'CMakeLists.txt')
         
-        # Verifica che tutti i file esistano
-        if all(os.path.exists(p) for p in [smile_exe, compare_conf, egemaps_conf]):
-            print(f"✓ openSMILE found at: {base_path}")
+        # Trova il primo exe che esiste
+        smile_exe = None
+        for exe_path in possible_exe_paths:
+            if os.path.exists(exe_path):
+                smile_exe = exe_path
+                break
+        
+        has_exe = smile_exe is not None
+        has_compare = os.path.exists(compare_conf)
+        has_egemaps = os.path.exists(egemaps_conf)
+        has_cmake = os.path.exists(cmakelists)
+        
+        print(f"    - SMILExtract.exe: {has_exe}")
+        if has_exe:
+            print(f"      Found at: {smile_exe}")
+        print(f"    - ComParE_2016.conf: {has_compare}")
+        print(f"    - eGeMAPSv02.conf: {has_egemaps}")
+        print(f"    - CMakeLists.txt: {has_cmake}")
+        
+        # CASO 1: Installazione completa
+        if has_exe and has_compare and has_egemaps:
+            print(f"\n openSMILE COMPLETE at: {base_path} ✓✓✓\n")
             return {
                 'SMILE_path': os.path.normpath(smile_exe),
                 'Compare2016_config_path': os.path.normpath(compare_conf),
-                'eGeMAPS_config_path': os.path.normpath(egemaps_conf)
+                'eGeMAPS_config_path': os.path.normpath(egemaps_conf),
+                'complete': True
             }
+        
+        # CASO 2: Sorgente da compilare
+        elif has_cmake and has_compare and has_egemaps and not has_exe:
+            print(f"\n⚠️  openSMILE SOURCE (needs build) at: {base_path} ⚠️\n")
+            return {
+                'needs_compilation': True,
+                'source_path': base_path,
+                'Compare2016_config_path': os.path.normpath(compare_conf),
+                'eGeMAPS_config_path': os.path.normpath(egemaps_conf),
+                'complete': False
+            }
+        
+        # CASO 3: Binari corrotti (config ma no exe e no sorgente)
+        elif has_compare and has_egemaps and not has_exe and not has_cmake:
+            print(f"\n⚠️  CORRUPTED installation at: {base_path} (missing exe) ⚠️")
+            print(f"    Suggestion: Delete this folder and download again\n")
     
+    print(f"\n[DEBUG] ========== openSMILE NOT FOUND ==========\n")
     return None
 
 
@@ -321,11 +470,31 @@ class AudioFeatureExtractorGUI:
             # Prova auto-detect
             detected = auto_detect_opensmile()
             
-            if detected:
-                # Trovato! Salva automaticamente
+            if detected and not detected.get('needs_compilation'):
+                # Trovato completo! Salva automaticamente
                 self.save_config(detected)
                 self.set_status(f"openSMILE auto-detected and configured", "success")
                 return
+            elif detected and detected.get('needs_compilation'):
+                # Trovato sorgente, chiedi se compilare
+                print(f"[DEBUG] Source found at {detected['source_path']}, offering compilation...")
+                
+                response = messagebox.askyesno(
+                    "Compile openSMILE?",
+                    f"openSMILE source code found at:\n{detected['source_path']}\n\n"
+                    "But SMILExtract executable is missing.\n\n"
+                    "Would you like to compile it now?\n"
+                    "(Requires CMake and C++ compiler)\n\n"
+                    "This will take 5-10 minutes.",
+                    icon='question'
+                )
+                
+                if response:
+                    self.compile_opensmile(detected['source_path'])
+                    return
+                else:
+                    self.set_status("openSMILE found but not compiled - Click Settings when ready", "warning")
+                    return
             else:
                 # Non trovato, chiedi se scaricare
                 response = messagebox.askyesnocancel(
@@ -348,6 +517,249 @@ class AudioFeatureExtractorGUI:
         
         # Già configurato
         self.set_status("Ready - Select audio files and feature sets to begin", "success")
+
+
+
+    def check_build_prerequisites(self):
+        """Verifica che CMake e compilatore siano installati"""
+        import subprocess
+        import platform
+        
+        # Verifica CMake
+        try:
+            result = subprocess.run(['cmake', '--version'], capture_output=True, text=True)
+            cmake_version = result.stdout.split('\n')[0] if result.returncode == 0 else None
+            print(f"[DEBUG] CMake trovato: {cmake_version}")
+        except FileNotFoundError:
+            return False, "CMake not found. Please install CMake from https://cmake.org/download/"
+        
+        # Verifica compilatore
+        system = platform.system().lower()
+        
+        if system == 'windows':
+            # Cerca Visual Studio o MinGW
+            try:
+                # Prova cl.exe (Visual Studio)
+                subprocess.run(['cl.exe'], capture_output=True)
+                print("[DEBUG] Compilatore Visual Studio trovato")
+                return True, None
+            except:
+                try:
+                    # Prova g++ (MinGW)
+                    result = subprocess.run(['g++', '--version'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        print("[DEBUG] Compilatore MinGW trovato")
+                        return True, None
+                except:
+                    pass
+                return False, "No C++ compiler found. Please install Visual Studio Build Tools or MinGW."
+        
+        elif system == 'linux':
+            try:
+                result = subprocess.run(['g++', '--version'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    print("[DEBUG] Compilatore g++ trovato")
+                    return True, None
+                return False, "g++ not found. Please install: sudo apt-get install build-essential cmake"
+            except:
+                return False, "g++ not found. Please install: sudo apt-get install build-essential cmake"
+        
+        elif system == 'darwin':
+            try:
+                result = subprocess.run(['clang++', '--version'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    print("[DEBUG] Compilatore clang++ trovato")
+                    return True, None
+                return False, "Xcode Command Line Tools not found. Please install: xcode-select --install"
+            except:
+                return False, "Xcode Command Line Tools not found. Please install: xcode-select --install"
+        
+        return False, f"Unsupported OS: {system}"
+
+
+    def compile_opensmile(self, opensmile_root):
+        """Compila openSMILE dal sorgente usando CMake"""
+        import subprocess
+        import threading
+        
+        def compile_thread():
+            try:
+                # Verifica prerequisiti
+                self.set_status("Checking build prerequisites...", "progress")
+                ok, error_msg = self.check_build_prerequisites()
+                
+                if not ok:
+                    self.set_status(f"Build failed: {error_msg}", "error")
+                    messagebox.showerror(
+                        "Build Prerequisites Missing",
+                        f"{error_msg}\n\n"
+                        "Please install the required tools and try again,\n"
+                        "or download precompiled binaries from:\n"
+                        "github.com/audeering/opensmile/releases"
+                    )
+                    return
+                
+                self.set_status("Starting openSMILE compilation... This may take 5-10 minutes", "progress")
+                self.progress.start(10)
+                self.extract_button.config(state='disabled')
+                
+                # Crea cartella build
+                build_dir = os.path.join(opensmile_root, 'build')
+                os.makedirs(build_dir, exist_ok=True)
+                
+                print(f"[DEBUG] Build directory: {build_dir}")
+                
+                # Step 1: CMake configure
+                self.set_status("CMake: Configuring project...", "progress")
+                print("[DEBUG] Eseguo: cmake ..")
+                
+                cmake_process = subprocess.Popen(
+                    ['cmake', '..'],
+                    cwd=build_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+                )
+                
+                # Mostra output in tempo reale
+                for line in cmake_process.stdout:
+                    print(f"[CMAKE] {line.rstrip()}")
+                
+                cmake_process.wait()
+                
+                if cmake_process.returncode != 0:
+                    raise RuntimeError(f"CMake configuration failed with code {cmake_process.returncode}")
+                
+                print("[DEBUG] CMake configuration completata")
+                
+                # Step 2: Build
+                self.set_status("Building openSMILE... (this takes several minutes)", "progress")
+                print("[DEBUG] Eseguo: cmake --build . --config Release")
+                
+                build_process = subprocess.Popen(
+                    ['cmake', '--build', '.', '--config', 'Release'],
+                    cwd=build_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+                )
+                
+                # Mostra output in tempo reale
+                for line in build_process.stdout:
+                    line_stripped = line.rstrip()
+                    print(f"[BUILD] {line_stripped}")
+                    # Cerca percentuali di progresso
+                    if '%]' in line_stripped or 'Building' in line_stripped:
+                        self.set_status(f"Building... {line_stripped[:50]}", "progress")
+                        self.root.update()
+                
+                build_process.wait()
+                
+                if build_process.returncode != 0:
+                    raise RuntimeError(f"Build failed with code {build_process.returncode}")
+                
+                print("[DEBUG] Build completata")
+                
+                # Verifica che l'exe sia stato creato
+                detected = auto_detect_opensmile()
+                
+                if detected and detected.get('SMILE_path') and os.path.exists(detected['SMILE_path']):
+                    self.save_config(detected)
+                    self.set_status(" openSMILE compiled successfully!", "success")
+                    messagebox.showinfo(
+                        "Compilation Successful",
+                        f"openSMILE has been compiled successfully!\n\n"
+                        f"SMILExtract: {detected['SMILE_path']}\n\n"
+                        "You can now start extracting features!"
+                    )
+                else:
+                    raise RuntimeError("Build completed but SMILExtract.exe not found in expected location")
+                
+            except Exception as e:
+                print(f"[ERROR] Compilation failed: {e}")
+                import traceback
+                traceback.print_exc()
+                self.set_status(f"Compilation failed: {str(e)}", "error")
+                messagebox.showerror(
+                    "Compilation Failed",
+                    f"Failed to compile openSMILE:\n{str(e)}\n\n"
+                    "Check the console for detailed logs.\n\n"
+                    "Alternative: Download precompiled binaries from:\n"
+                    "github.com/audeering/opensmile/releases"
+                )
+            finally:
+                self.progress.stop()
+                self.extract_button.config(state='normal')
+                self.root.update()
+        
+        # Esegui in thread
+        thread = threading.Thread(target=compile_thread, daemon=True)
+        thread.start()
+
+
+    def check_and_offer_compilation(self):
+        """Controlla se SMILExtract manca e offre compilazione"""
+        import platform
+        
+        # Cerca openSMILE installato
+        possible_locations = [
+            os.path.join(os.path.expanduser('~'), 'opensmile'),
+            os.path.join(os.path.expanduser('~'), 'Desktop', 'opensmile'),
+            os.path.join(os.path.expanduser('~'), 'Documents', 'opensmile'),
+        ]
+        
+        opensmile_root = None
+        for location in possible_locations:
+            if os.path.exists(location):
+                opensmile_root = location
+                break
+        
+        if not opensmile_root:
+            print("[DEBUG] Nessuna cartella openSMILE trovata")
+            return  # Nessun openSMILE trovato
+        
+        print(f"[DEBUG] Cartella openSMILE trovata: {opensmile_root}")
+        
+        # Controlla se SMILExtract esiste
+        system = platform.system().lower()
+        
+        if system == 'windows':
+            smile_exe = os.path.join(opensmile_root, 'build', 'progsrc', 'smilextract', 'Release', 'SMILExtract.exe')
+        else:
+            # Linux/Mac - nessuna estensione .exe
+            smile_exe = os.path.join(opensmile_root, 'build', 'progsrc', 'smilextract', 'SMILExtract')
+        
+        if os.path.exists(smile_exe):
+            print(f"[DEBUG] SMILExtract già presente: {smile_exe}")
+            return  # Exe già presente
+        
+        print(f"[DEBUG] SMILExtract NON trovato in: {smile_exe}")
+        
+        # SMILExtract manca, controlla se c'è il sorgente
+        cmakelists = os.path.join(opensmile_root, 'CMakeLists.txt')
+        
+        if not os.path.exists(cmakelists):
+            print(f"[DEBUG] CMakeLists.txt non trovato, non è sorgente openSMILE")
+            return  # Non è il sorgente
+        
+        print(f"[DEBUG] CMakeLists.txt trovato, è sorgente da compilare")
+        
+        # Offri compilazione
+        response = messagebox.askyesno(
+            "Compile openSMILE?",
+            f"openSMILE source code found at:\n{opensmile_root}\n\n"
+            "But SMILExtract executable is missing.\n\n"
+            "Would you like to compile it now?\n"
+            "(Requires CMake and C++ compiler)\n\n"
+            "This will take 5-10 minutes.",
+            icon='question'
+        )
+        
+        if response:
+            self.compile_opensmile(opensmile_root)
+
     
     def download_opensmile(self):
         """Wrapper to call the module-level function"""

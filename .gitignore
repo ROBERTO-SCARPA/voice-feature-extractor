@@ -22,6 +22,8 @@ UI/gui_config.json
 *_LLD.csv
 *.arff
 common/*
+train/models/*
+risultati/*
 
 # IDE
 .vscode/
